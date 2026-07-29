@@ -28,6 +28,15 @@ def _status_uri() -> str:
     return f"{_issuer_url()}/api/issuer/status-list/primary"
 
 
+def _loa_for_vct(vct: str) -> str:
+    """Compute eIDAS LoA at issuance time so Compliance Cockpit counters work."""
+    if "pid" in vct or "mdl" in vct:
+        return "high"
+    if "email" in vct:
+        return "substantial"
+    return "low"
+
+
 @router.post("/nonce", response_model=NonceResponse)
 async def issue_nonce() -> NonceResponse:
     validator = ProofJWTValidator(expected_audience=_issuer_url())
@@ -68,6 +77,7 @@ async def issue_credential(req: CredentialOfferRequest) -> CredentialResponse:
             "country_code": req.country_code,
             "issued_at": datetime.now(timezone.utc).isoformat(),
             "compact_head": compact[:120],
+            "loa": _loa_for_vct(req.vct),
         }
     )
     await StatusListClient().set_status(_status_uri(), status_idx, "active")
