@@ -1,8 +1,12 @@
 """OpenID4VCI Issuer — /nonce + /credential."""
 from __future__ import annotations
 
+import json
 import os
-from datetime import datetime, timezone
+import secrets
+import uuid
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -115,3 +119,66 @@ async def revoke(list_id: str, idx: int) -> dict:
         payload={"status_idx": idx, "list": list_id},
     )
     return {"revoked": True, "idx": idx}
+
+
+# --------- Credential Offer (OpenID4VCI §4) ---------
+
+@router.post("/credential-offer")
+async def create_credential_offer(
+    body: dict, user: dict = Depends(require_user)
+) -> dict:
+    """Create a pre-authorized credential offer.
+
+    Body: `{"vct": "...", "grants": {...} (optional)}`. Returns:
+      - offer_id
+      - offer_uri (openid-credential-offer://…) — for QR code display
+      - by_reference_uri (https://…/credential-offer/{id}) — for wallets that
+        prefer fetching the offer JSON separately
+      - offer (the inline JSON object) — for wallets that inline
+    """
+    vct = body.get("vct", "eu.europa.ec.eudi.pid.1")
+    pre_auth = secrets.token_urlsafe(24)
+    offer_id = uuid.uuid4().hex[:16]
+    offer = {
+        "credential_issuer": _issuer_url(),
+        "credential_configuration_ids": [vct],
+        "grants": {
+            "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+                "pre-authorized_code": pre_auth,
+                "tx_code": {"input_mode": "numeric", "length": 6},
+            }
+        },
+    }
+    await get_db().credential_offers.insert_one(
+        {
+            "offer_id": offer_id,
+            "offer": offer,
+            "actor": user.get("email"),
+            "expires_at": datetime.now(timezone.utc) + timedelta(minutes=15),
+        }
+    )
+    by_ref = f"{_issuer_url()}/api/issuer/credential-offer/{offer_id}"
+    inline = "openid-credential-offer://?" + urlencode(
+        {"credential_offer": json.dumps(offer, separators=(",", ":"))}
+    )
+    by_ref_uri = "openid-credential-offer://?" + urlencode({"credential_offer_uri": by_ref})
+    await append_event(
+        event_type="credential.offer_created",
+        actor=user.get("email", "issuer"),
+        payload={"vct": vct, "offer_id": offer_id},
+    )
+    return {
+        "offer_id": offer_id,
+        "offer_uri": inline,
+        "by_reference_uri": by_ref_uri,
+        "offer": offer,
+        "expires_in": 900,
+    }
+
+
+@router.get("/credential-offer/{offer_id}")
+async def get_credential_offer(offer_id: str) -> dict:
+    doc = await get_db().credential_offers.find_one({"offer_id": offer_id}, {"_id": 0, "offer": 1})
+    if not doc:
+        raise HTTPException(404, "credential offer not found")
+    return doc["offer"]

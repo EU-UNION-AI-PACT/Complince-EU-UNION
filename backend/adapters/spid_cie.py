@@ -15,7 +15,7 @@ class SpidCieAdapter:
         flag="🇮🇹",
         scheme="SPID / CIE",
         trust_framework="AGID / eIDAS",
-        supported_formats=["sd-jwt"],
+        supported_formats=["sd-jwt", "ldp-vc"],
         loa_mapping={"spidL1": "low", "spidL2": "substantial", "spidL3": "high"},
         reference_url="https://github.com/italia",
         id_hash_algorithm="SHA-256 over Codice Fiscale",
@@ -24,6 +24,8 @@ class SpidCieAdapter:
 
     def __init__(self) -> None:
         self._sd_verifier = SDJWTVerifierV2(StatusListClient())
+        from services.ldp_vc_verifier import LdpVcVerifier
+        self._ldp_verifier = LdpVcVerifier()
 
     async def verify(
         self,
@@ -33,15 +35,19 @@ class SpidCieAdapter:
         audience: str | None,
         nonce: str | None,
     ) -> dict[str, Any]:
-        if format != "sd-jwt":
-            return {"valid": False, "reasons": ["SPID / CIE requires SD-JWT VC"]}
-        result = await self._sd_verifier.verify(presentation, audience=audience, nonce=nonce)
-        disclosed = result.get("disclosed_claims", {})
+        if format == "sd-jwt":
+            result = await self._sd_verifier.verify(presentation, audience=audience, nonce=nonce)
+        elif format == "ldp-vc":
+            result = await self._ldp_verifier.verify(presentation)
+        else:
+            return {"valid": False, "reasons": ["SPID / CIE requires SD-JWT VC or LDP-VC"]}
+        disclosed = dict(result.get("disclosed_claims", {}))
         cf = disclosed.get("codice_fiscale") or disclosed.get("codiceFiscale")
         if cf:
             disclosed["codice_fiscale_hash"] = self.hash_national_id(cf)
             disclosed.pop("codice_fiscale", None)
             disclosed.pop("codiceFiscale", None)
+        result["disclosed_claims"] = disclosed
         return result
 
     def hash_national_id(self, national_id: str) -> str:

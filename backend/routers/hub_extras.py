@@ -143,8 +143,25 @@ def _format_json(v: Any) -> str:
 
 
 @router.get("/postman-collection")
-async def postman_collection(request: Request) -> dict[str, Any]:
-    """Generate a Postman v2.1 collection from the live OpenAPI schema."""
+async def postman_collection(request: Request, download: int = 0):
+    """Generate a Postman v2.1 collection from the live OpenAPI schema.
+
+    Pass `?download=1` for a `Content-Disposition: attachment` response so
+    browsers save the file directly instead of previewing JSON.
+    """
     spec = request.app.openapi()
     base = str(request.base_url).rstrip("/")
-    return _openapi_to_postman(spec, base)
+    coll = _openapi_to_postman(spec, base)
+    if download:
+        import json
+
+        from fastapi.responses import Response
+
+        return Response(
+            content=json.dumps(coll, indent=2),
+            media_type="application/json",
+            headers={
+                "Content-Disposition": 'attachment; filename="eudi-nexus.postman_collection.json"'
+            },
+        )
+    return coll

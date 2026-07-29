@@ -45,6 +45,9 @@ async def bootstrap_indexes() -> None:
     await db.sse_sessions.create_index("expires_at", expireAfterSeconds=0)
     # Status list entries
     await db.status_list.create_index("credential_id", unique=True)
+    # Credential offers (OpenID4VCI §4) — TTL 15min
+    await db.credential_offers.create_index("expires_at", expireAfterSeconds=0)
+    await db.credential_offers.create_index("offer_id", unique=True)
 
 
 async def close_client() -> None:

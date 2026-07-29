@@ -1,11 +1,9 @@
-"""Country adapter registry — 11 fully implemented adapters (Sprint 7)."""
+"""Country adapter registry — 11 fully implemented adapters (all with LDP-VC where applicable)."""
 from __future__ import annotations
 
 from adapters.base import CountryAdapter, CountryConfig
 from adapters.eu_arf import EUARFAdapter
 from adapters.france_connect import FranceConnectAdapter
-from adapters.spid_cie import SpidCieAdapter
-from adapters.swiyu import SwiyuAdapter
 from adapters.real_impls import (
     AamvaMdlAdapter,
     BankIdSEAdapter,
@@ -15,6 +13,8 @@ from adapters.real_impls import (
     MyGovIdIEAdapter,
     PortugalAdapter,
 )
+from adapters.spid_cie import SpidCieAdapter
+from adapters.swiyu import SwiyuAdapter
 
 CONFIGS: list[CountryConfig] = [
     CountryConfig(
@@ -23,7 +23,7 @@ CONFIGS: list[CountryConfig] = [
         flag="🇵🇹",
         scheme="Autenticação.gov",
         trust_framework="AMA / eIDAS",
-        supported_formats=["sd-jwt"],
+        supported_formats=["sd-jwt", "ldp-vc"],
         loa_mapping={"AL1": "low", "AL2": "substantial", "AL3": "high"},
         reference_url="https://www.autenticacao.gov.pt/",
         id_hash_algorithm="SHA-256 over NIC",
@@ -35,7 +35,7 @@ CONFIGS: list[CountryConfig] = [
         flag="🇸🇪",
         scheme="BankID",
         trust_framework="Finansiell ID-Teknik / eIDAS",
-        supported_formats=["sd-jwt"],
+        supported_formats=["sd-jwt", "ldp-vc"],
         loa_mapping={"basic": "substantial", "advanced": "high"},
         reference_url="https://www.bankid.com/",
         id_hash_algorithm="SHA-256 over Personnummer (digits only)",
@@ -47,7 +47,7 @@ CONFIGS: list[CountryConfig] = [
         flag="🇳🇴",
         scheme="ID-porten",
         trust_framework="Digdir",
-        supported_formats=["sd-jwt"],
+        supported_formats=["sd-jwt", "ldp-vc"],
         loa_mapping={"idporten-loa-substantial": "substantial", "idporten-loa-high": "high"},
         reference_url="https://docs.digdir.no/",
         id_hash_algorithm="SHA-256 over Fødselsnummer (digits only)",
@@ -59,7 +59,7 @@ CONFIGS: list[CountryConfig] = [
         flag="🇩🇰",
         scheme="MitID",
         trust_framework="Digitaliseringsstyrelsen",
-        supported_formats=["sd-jwt"],
+        supported_formats=["sd-jwt", "ldp-vc"],
         loa_mapping={"low": "low", "substantial": "substantial", "high": "high"},
         reference_url="https://www.mitid.dk/",
         id_hash_algorithm="SHA-256 over CPR (digits only)",
@@ -71,7 +71,7 @@ CONFIGS: list[CountryConfig] = [
         flag="🇮🇪",
         scheme="MyGovID",
         trust_framework="Department of Social Protection",
-        supported_formats=["sd-jwt"],
+        supported_formats=["sd-jwt", "ldp-vc"],
         loa_mapping={"basic": "low", "verified": "substantial", "assured": "high"},
         reference_url="https://www.mygovid.ie/",
         id_hash_algorithm="SHA-256 over PPSN",
@@ -83,7 +83,7 @@ CONFIGS: list[CountryConfig] = [
         flag="🇧🇷",
         scheme="gov.br",
         trust_framework="ITI / ICP-Brasil",
-        supported_formats=["sd-jwt", "mdoc"],
+        supported_formats=["sd-jwt", "mdoc", "ldp-vc"],
         loa_mapping={"bronze": "low", "prata": "substantial", "ouro": "high"},
         reference_url="https://acesso.gov.br/",
         id_hash_algorithm="SHA-256 over CPF (digits only)",

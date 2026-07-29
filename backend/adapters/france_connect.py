@@ -15,7 +15,7 @@ class FranceConnectAdapter:
         flag="🇫🇷",
         scheme="France Connect+",
         trust_framework="ANSSI RGS *** / eIDAS High",
-        supported_formats=["sd-jwt"],
+        supported_formats=["sd-jwt", "ldp-vc"],
         loa_mapping={"eidas1": "low", "eidas2": "substantial", "eidas3": "high"},
         reference_url="https://franceconnect.gouv.fr/partenaires",
         id_hash_algorithm="SHA-256 over INSEE code",
@@ -24,6 +24,8 @@ class FranceConnectAdapter:
 
     def __init__(self) -> None:
         self._sd_verifier = SDJWTVerifierV2(StatusListClient())
+        from services.ldp_vc_verifier import LdpVcVerifier
+        self._ldp_verifier = LdpVcVerifier()
 
     async def verify(
         self,
@@ -33,15 +35,18 @@ class FranceConnectAdapter:
         audience: str | None,
         nonce: str | None,
     ) -> dict[str, Any]:
-        if format != "sd-jwt":
-            return {"valid": False, "reasons": ["France Connect+ requires SD-JWT VC"]}
-        result = await self._sd_verifier.verify(presentation, audience=audience, nonce=nonce)
-        # anonymise INSEE code in disclosed claims
-        disclosed = result.get("disclosed_claims", {})
+        if format == "sd-jwt":
+            result = await self._sd_verifier.verify(presentation, audience=audience, nonce=nonce)
+        elif format == "ldp-vc":
+            result = await self._ldp_verifier.verify(presentation)
+        else:
+            return {"valid": False, "reasons": ["France Connect+ requires SD-JWT VC or LDP-VC"]}
+        disclosed = dict(result.get("disclosed_claims", {}))
         insee = disclosed.get("insee")
         if insee:
             disclosed["insee_hash"] = self.hash_national_id(insee)
             disclosed.pop("insee", None)
+        result["disclosed_claims"] = disclosed
         result["loa"] = "high"
         return result
 
