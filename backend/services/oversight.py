@@ -20,6 +20,8 @@ LOA_RANK = {"low": 1, "substantial": 2, "high": 3}
 
 
 def subject_fingerprint(disclosed: dict[str, Any]) -> str | None:
+    import unicodedata
+
     parts = [
         str(disclosed.get("family_name") or ""),
         str(disclosed.get("given_name") or ""),
@@ -27,7 +29,9 @@ def subject_fingerprint(disclosed: dict[str, Any]) -> str | None:
     ]
     if not any(parts):
         return None
-    return hashlib.sha256("|".join(parts).lower().encode()).hexdigest()
+    # NFC + casefold so 'Ä', 'ß' etc normalize deterministically across locales
+    normalized = "|".join(unicodedata.normalize("NFC", p).casefold() for p in parts)
+    return hashlib.sha256(normalized.encode()).hexdigest()
 
 
 async def track_and_detect(

@@ -1,6 +1,8 @@
 """AI Act Art. 14 oversight router."""
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -11,7 +13,7 @@ router = APIRouter(prefix="/compliance/oversight", tags=["Compliance"])
 
 class OverrideRequest(BaseModel):
     subject_fp: str
-    decision: str  # accept | reject | escalate
+    decision: Literal["accept", "reject", "escalate"]
     reviewer: str
     note: str = ""
 

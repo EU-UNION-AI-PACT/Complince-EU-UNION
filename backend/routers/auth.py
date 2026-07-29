@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel
 
 from database import get_db
 
@@ -72,13 +73,17 @@ async def create_session(request: Request, response: Response) -> dict[str, Any]
 
     session_token = data["session_token"]
     expires_at = datetime.now(timezone.utc) + SESSION_TTL
-    await db.user_sessions.insert_one(
+    await db.user_sessions.update_one(
+        {"session_token": session_token},
         {
-            "user_id": user_id,
-            "session_token": session_token,
-            "expires_at": expires_at,
-            "created_at": datetime.now(timezone.utc),
-        }
+            "$set": {
+                "user_id": user_id,
+                "session_token": session_token,
+                "expires_at": expires_at,
+            },
+            "$setOnInsert": {"created_at": datetime.now(timezone.utc)},
+        },
+        upsert=True,
     )
     response.set_cookie(
         key="session_token",
@@ -131,7 +136,12 @@ async def me(request: Request) -> dict[str, Any]:
 
 @router.post("/logout")
 async def logout(request: Request, response: Response) -> dict[str, Any]:
+    # Honor Bearer header too so CLI clients can self-revoke (fix per iteration-2 review).
     token = request.cookies.get("session_token")
+    if not token:
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            token = auth.split(None, 1)[1].strip()
     if token:
         await get_db().user_sessions.delete_one({"session_token": token})
     response.delete_cookie("session_token", path="/", samesite="none", secure=True)
