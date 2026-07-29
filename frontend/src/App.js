@@ -9,6 +9,7 @@ import Compliance from "./pages/Compliance";
 import TrustPipeline from "./pages/TrustPipeline";
 import Federation from "./pages/Federation";
 import DeveloperHub from "./pages/DeveloperHub";
+import AdminPortal from "./pages/AdminPortal";
 import { AuthProvider, AuthCallback } from "./lib/auth";
 import "./i18n";
 import "./App.css";
@@ -30,6 +31,7 @@ function AppRouter() {
         <Route path="/trust" element={<TrustPipeline />} />
         <Route path="/federation" element={<Federation />} />
         <Route path="/hub" element={<DeveloperHub />} />
+        <Route path="/admin" element={<AdminPortal />} />
       </Route>
     </Routes>
   );

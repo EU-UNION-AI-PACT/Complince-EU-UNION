@@ -77,4 +77,8 @@ export const authMe = () => api.get("/auth/me").then((r) => r.data);
 export const authSession = (session_id) => api.post("/auth/session", { session_id }).then((r) => r.data);
 export const authLogout = () => api.post("/auth/logout").then((r) => r.data);
 
+// ---- Admin (require_admin) ----
+export const adminOverview = () => api.get("/admin/overview").then((r) => r.data);
+export const adminListUsers = () => api.get("/admin/users").then((r) => r.data);
+
 export default api;

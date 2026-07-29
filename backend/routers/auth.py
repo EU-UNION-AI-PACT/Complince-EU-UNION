@@ -24,6 +24,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from database import get_db
+from services.admin_seed import sync_role_on_login
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -94,11 +95,13 @@ async def create_session(request: Request, response: Response) -> dict[str, Any]
         samesite="none",
         path="/",
     )
+    role = await sync_role_on_login(data["email"])
     return {
         "user_id": user_id,
         "email": data["email"],
         "name": data["name"],
         "picture": data.get("picture", ""),
+        "role": role,
         "session_token": session_token,  # also returned so clients on strict-CORS hosts can use Bearer auth
     }
 
@@ -153,4 +156,11 @@ async def require_user(request: Request) -> dict[str, Any]:
     user = await _resolve_user(request)
     if not user:
         raise HTTPException(401, "authentication required for this endpoint")
+    return user
+
+
+async def require_admin(request: Request) -> dict[str, Any]:
+    user = await require_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(403, "admin role required")
     return user

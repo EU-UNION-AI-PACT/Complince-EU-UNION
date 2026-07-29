@@ -12,6 +12,7 @@ import {
   Github,
   LogIn,
   LogOut,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 
@@ -25,9 +26,12 @@ const items = [
   { to: "/hub", labelKey: "hub", icon: Github, testId: "nav-hub" },
 ];
 
+const adminItem = { to: "/admin", labelKey: "admin", icon: ShieldAlert, testId: "nav-admin" };
+
 export function Header() {
   const { t, i18n } = useTranslation();
   const { user, loading, loginWithGoogle, logout } = useAuth();
+  const navItems = user?.role === "admin" ? [...items, adminItem] : items;
   const toggleLang = () => {
     const next = i18n.language === "de" ? "en" : "de";
     i18n.changeLanguage(next);
@@ -53,7 +57,7 @@ export function Header() {
           </div>
         </NavLink>
         <nav className="hidden lg:flex items-center gap-1 flex-1">
-          {items.map(({ to, labelKey, icon: Icon, testId }) => (
+          {navItems.map(({ to, labelKey, icon: Icon, testId }) => (
             <NavLink
               key={to}
               to={to}
@@ -62,12 +66,14 @@ export function Header() {
               className={({ isActive }) =>
                 `flex items-center gap-2 px-3 py-2 text-[13px] font-medium rounded-sm transition-colors ` +
                 (isActive
-                  ? "text-amber-400 bg-amber-500/10 border-b-2 border-amber-500"
+                  ? labelKey === "admin"
+                    ? "text-red-400 bg-red-500/10 border-b-2 border-red-500"
+                    : "text-amber-400 bg-amber-500/10 border-b-2 border-amber-500"
                   : "text-slate-400 hover:text-white hover:bg-white/5")
               }
             >
               <Icon size={14} strokeWidth={1.6} />
-              <span>{t(`nav.${labelKey}`)}</span>
+              <span>{labelKey === "admin" ? "Admin" : t(`nav.${labelKey}`)}</span>
             </NavLink>
           ))}
         </nav>
@@ -119,7 +125,7 @@ export function Header() {
       </div>
       {/* mobile nav */}
       <nav className="lg:hidden flex items-center gap-1 overflow-x-auto px-6 pb-2 border-t border-white/5">
-        {items.map(({ to, labelKey, icon: Icon, testId }) => (
+        {navItems.map(({ to, labelKey, icon: Icon, testId }) => (
           <NavLink
             key={to}
             to={to}
@@ -128,12 +134,14 @@ export function Header() {
             className={({ isActive }) =>
               `flex items-center gap-1.5 px-3 py-1.5 text-[11px] rounded-sm transition-colors whitespace-nowrap ` +
               (isActive
-                ? "text-amber-400 bg-amber-500/10"
+                ? labelKey === "admin"
+                  ? "text-red-400 bg-red-500/10"
+                  : "text-amber-400 bg-amber-500/10"
                 : "text-slate-400 hover:text-white")
             }
           >
             <Icon size={12} strokeWidth={1.6} />
-            {t(`nav.${labelKey}`)}
+            {labelKey === "admin" ? "Admin" : t(`nav.${labelKey}`)}
           </NavLink>
         ))}
       </nav>

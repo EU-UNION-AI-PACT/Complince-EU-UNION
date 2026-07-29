@@ -20,6 +20,7 @@ load_dotenv(ROOT_DIR / ".env")
 # imports AFTER load_dotenv so MASTER_KEY is available
 from database import bootstrap_indexes, close_client, get_db  # noqa: E402
 from routers import (  # noqa: E402
+    admin,
     auth,
     compliance,
     country,
@@ -83,6 +84,7 @@ api_router.include_router(country.router)
 api_router.include_router(hub.router)
 api_router.include_router(hub_extras.router)
 api_router.include_router(auth.router)
+api_router.include_router(admin.router)
 api_router.include_router(well_known.router, prefix="/.well-known")
 
 

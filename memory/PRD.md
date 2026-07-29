@@ -1,104 +1,78 @@
 # EUDI-Nexus — Product Requirements Document
 
 ## Original Problem Statement
+Web-App (React + FastAPI + MongoDB) — eIDAS 2.0 / EUDI-Wallet Referenz-Infrastruktur mit Concept Paper Portal + Reference Sandbox + Compliance Cockpit. SD-JWT VC + ISO 18013-5 mDoc. No-Mocks-Policy strikt. Cyberpunk-Institutional Design.
 
-Web-App (React + TypeScript + FastAPI + MongoDB) — Vollständige eIDAS 2.0 / EUDI-Wallet Referenz-Infrastruktur-Plattform mit Concept Paper Portal + Reference Implementation Sandbox + Compliance Cockpit. Cyberpunk-Institutional Design. No-Mocks-Policy strikt.
+## Iteration History
 
-Sprint-Roadmap 1-9 mit Architektur-Locks: SD-JWT VC + ISO 18013-5 mDoc, ES256/384/EdDSA, `cnf.jwk` Pflicht + KB-JWT bei Presentations, AES-256-GCM Envelope-Storage, persistente 3-Level-CA, CBOR Tag 18/24/0 strikt, c_nonce TTL 300s + One-Time-Use, Status-List mit LRU-Cache.
+### Iteration 1 — Sprint 1-5 MVP (Foundation + SD-JWT + mDoc)
+- All crypto services: SD-JWT builder/verifier, mDoc issuer/verifier, persistent 3-level CA, LOTL parser, X.509 chain validator, hash-chained audit log
+- 5 concept paper chapters, live sandbox, compliance cockpit, trust pipeline, federation, developer hub
+- 4 real country adapters (EU/FR/IT/CH), 7 stubs
+- **34/34 backend tests passing**
 
-## User Personas
+### Iteration 2 — Sprint 7-9 + Emergent Google Auth
+- **Sprint 7**: All 7 stub adapters (PT/SE/NO/DK/IE/BR/US) upgraded to real signature verification with DSGVO-hashing of national IDs (Personnummer, Fødselsnummer, CPR, PPSN, CPF, DL#). All 11 adapters now `implemented=true`.
+- **Sprint 8**: LoA-Downgrade-Detection service (`services/oversight.py`) — hooks into every successful verification, maintains per-subject-fingerprint LoA history in Mongo, emits `loa.downgrade` audit events on regression. Human-oversight override endpoint (`POST /api/compliance/oversight/override`) with `accept`/`reject`/`escalate` decisions, audit-logged. Frontend `<DowngradePanel />` in the Compliance page.
+- **Sprint 9**: `GET /api/hub/repos/live` — GitHub public-API sync with 1h LRU cache (stars/forks/last_commit/reachability). `GET /api/hub/postman-collection` — on-the-fly OpenAPI → Postman v2.1 conversion. `<DeveloperHub />` shows LIVE badges + a Postman-download button.
+- **Emergent Google Auth**: `POST /api/issuer/credential` and `POST /api/compliance/gdpr/erasure` protected via `Depends(require_user)`. Bearer-token flow (Kubernetes ingress overrides CORS wildcards, so we use localStorage + Authorization header instead of cookies). `/api/auth/session` returns `session_token` in JSON body for client-side storage.
+- **49/49 backend tests passing** — no critical bugs.
+- Code review fixes applied: (1) `/api/auth/logout` now honors Bearer, (2) `create_session` upserts by `session_token`, (3) `OverrideRequest.decision` uses `Literal[...]` → 422 for invalid values (not 500), (4) `subject_fingerprint` uses NFC + casefold() for deterministic locale-independent hashing.
 
-1. **eIDAS 2.0 Government Architects** — evaluieren Referenz-Architektur für nationale Wallet-Implementations
-2. **EUDI-Wallet Developer** — brauchen funktionierende Beispiele für SD-JWT VC Issuance/Verification und ISO 18013-5 mDoc
-3. **Compliance-Officer** — DSGVO, EU AI Act Art. 13/14, DSA-Reports auf Knopfdruck
-4. **Solution Architects** in Mitgliedstaaten — Adapter-Interfaces für nationale Vertrauens-Frameworks
+### Iteration 3 — Admin Portal (`/admin`)
+- **Role-based access**: `role` field on `users` collection. `require_admin` dependency. Nav-item "Admin" only visible to admin role.
+- **Idempotent seeding**: `services/admin_seed.py` reads `ADMIN_EMAILS` env var (comma-separated). Bootstrap: first user to sign in becomes admin if no admins configured and no other users exist.
+- **`GET /api/admin/overview`**: aggregate snapshot — adapters, CA docs, audit chain integrity, credential count, downgrade counts, user counts.
+- **`GET /api/admin/users`**: user + role listing.
+- **Frontend `/admin`** with 4 tabs:
+  1. **Overview** — 6 real-time stat cards + user table with role badges
+  2. **AI Act Art. 14 Oversight** — reuses `<DowngradePanel />`
+  3. **GDPR Art. 17** — real erasure form (Bearer-gated, confirm-before-execute) + tamper-evident history of past erasure events
+  4. **GitHub Live-Sync** — 10 repos, per-repo status (LIVE / http-error), aggregate stars, cache-refresh button
+- **Every cell** is bound to a real backend endpoint. No hardcoded emails. No fake events. No client-side auth bypass. Complies with the No-Mocks-Policy.
 
-## Core Requirements (static)
+## Architecture Locks
+- ES256 primary; ES384/ES512 for LoA-High; EdDSA optional for W3C VC-DM 2.0
+- SD-JWT VC (RFC 9215) + ISO 18013-5 mDoc parallel
+- CBOR Tag 18 (COSE_Sign1) + 24 (bstr.cbor) + 0 (tdate) — strict
+- AES-256-GCM Envelope Key Storage — fail-fast on missing `MASTER_KEY`
+- Persistent 3-Level CA (Root → Intermediate → Signer) — never regenerated
+- c_nonce TTL 300s + `find_one_and_delete` One-Time-Use
+- Status List with signature + LRU 5min cache
+- Audit log: SHA-256 prev_hash + JWS `typ=audit+jwt` signature per entry
 
-- SD-JWT VC Issuer mit RFC 7515 R‖S JWS, `_sd`-Digests, KB-JWT, Status List
-- ISO 18013-5 mDoc mit COSE_Sign1 (Tag 18), MSO Payload (Tag 24), RFC 3339 UTC (Tag 0)
-- Persistente 3-Level Certificate Authority (Root → Intermediate → Signer), AES-256-GCM
-- ETSI TS 119 612 LOTL Parser
-- RFC 5280 X.509 Chain-Validator
-- Multi-Country Adapter Protocol (CountryAdapter) mit DSGVO-konformem ID-Hashing
-- Compliance-Cockpit mit SHA-256 hash-chained Audit-Log
-- Concept Paper Portal (5 Kapitel MDX + Volltextsuche + Bookmarks)
-- Reference Sandbox mit Live-Issue → Present → Verify Flow
-- i18n DE/EN
-- Cyberpunk-Institutional Design (Deep-Slate/Amber/Electric-Blue, Inter+IBM Plex Serif+JetBrains Mono)
+## Backlog (P0 / P1 / P2)
 
-## What's been implemented (2026-02-XX — Sprint 1-5 MVP)
+### P0 (production hardening — recommended before real-world use)
+- [ ] Populate `ADMIN_EMAILS` in production `.env` (or leverage first-user bootstrap)
+- [ ] Rate-limit `/api/issuer/credential` and `/api/compliance/gdpr/erasure`
+- [ ] Also protect `/api/issuer/nonce` with `Depends(require_user)` (currently public — flagged in iteration-2 review as nonce-pool-exhaustion vector)
+- [ ] `AamvaMdlAdapter` currently trusts platform-local CA for cross-border mDL — document as reference-only or wire real AAMVA trust anchors
+- [ ] Sprint 6 (JMAP + Wallet-Auth) on-prem Stalwart deployment testing
 
-### Backend (FastAPI + Motor/MongoDB)
-- ✅ `KeyStorageManager` — AES-256-GCM Envelope-Encryption, Fail-Fast bei fehlendem MASTER_KEY
-- ✅ `SignerSingleton` — Race-safe ES256 (P-256) Issuer Key (persistiert in Mongo)
-- ✅ `IssuerSigner` — RFC 7515 R‖S JWS via `decode_dss_signature`
-- ✅ `SDJWTBuilder` — Disclosures + `_sd` Hashing + `cnf.jwk` + Status-List-Pointer
-- ✅ `SDJWTVerifierV2` — Signature + Time-Claims + Disclosure-Verify + KB-JWT + Status-List
-- ✅ `ProofJWTValidator` — c_nonce mit TTL 300s, One-Time-Use via `find_one_and_delete`
-- ✅ `StatusListClient` — 2-bit per credential, LRU 5min Cache, zlib+base64
-- ✅ `CAGenerator` — Persistente 3-Level CA (P-256, X.509 v3 mit EKU 1.0.18013.5.1.2)
-- ✅ `TrustValidator` — RFC 5280 X.509 Chain-Check
-- ✅ `LotlParser` — ETSI TS 119 612 XML mit lxml, Namespaces korrekt
-- ✅ `MDocIssuerSingleton` — CBOR Tag 18/24/0, COSE_Sign1, MSO mit valueDigests
-- ✅ `MDocVerifier` — issuerAuth Signature + Chain + Digest-Match
-- ✅ `MDocEngagement` — Ephemeral eDeviceKey (P-256)
-- ✅ `AuditLog` — SHA-256 hash-chained + JWS signature per Entry
-- ✅ `JmapAuthBridge` — Mock-Bridge für Emergent Cloud (Stalwart-Config unter `/app/stalwart/config/config.toml` dokumentiert)
-- ✅ 11 Country Adapter — 4 Real (EU/FR/IT/CH), 7 Stubs (PT/SE/NO/DK/IE/BR/US)
-- ✅ Compliance-Cockpit: `/metrics`, `/audit-log`, `/audit-log/verify`, `/ai-act/transparency`, `/dsa/report.pdf`, `/gdpr/erasure`
-- ✅ `.well-known/openid-credential-issuer` + `/jwks.json`
-- ✅ CI Scripts: `validate_spec_tags.py` (Gate 2) + `security_static_scan.py` (Gate 3)
-- ✅ Concept Paper Seed — 5 Kapitel (Executive Summary, Architektur, JMAP, Multi-Country, Compliance)
-- ✅ 34/34 pytest Backend-Tests grün
+### P1 (nice-to-have next)
+- [ ] `?download=1` variant of `/api/hub/postman-collection` with `Content-Disposition: attachment`
+- [ ] Optional GITHUB_TOKEN env for higher API rate limits (60 → 5000 req/h)
+- [ ] Volltextsuche im Concept Paper mit Query-Highlighting
+- [ ] QR-Code Renderer für Credential-Offer URIs (`openid-credential-offer://…`)
+- [ ] W3C VC-DM 2.0 mit URDNA2015 canonicalization für Swiyu
 
-### Frontend (React + shadcn/ui + Tailwind)
-- ✅ Landing Page — Hero mit 4 Cyberpunk-Institutional Bildern, 6-Säulen-Grid, Cross-Border CTA
-- ✅ Concept Paper Portal — 5 Kapitel, Volltextsuche, Bookmarks in LocalStorage, IBM Plex Serif Body
-- ✅ Reference Sandbox — 3 Tabs (SD-JWT, mDoc, Country), Live-Flow mit browser-native SubtleCrypto P-256, JSON-Viewer
-- ✅ Compliance Cockpit — Bento-Grid mit Metriken, hash-chained Audit-Log Table, AI Act Panel, GDPR Erasure, DSA PDF Export
-- ✅ Trust Pipeline — 3-Level CA-Chain Viewer mit expandierbaren PEM-Zertifikaten, LOTL-XML Parser
-- ✅ Federation — Alle 11 Länder mit Adapter-Details, LoA-Mapping, GDPR-Hash-Info
-- ✅ Developer Hub — 10 OSS-Repos gefiltert nach Kategorie
-- ✅ i18n DE/EN via i18next mit Language-Toggle
-- ✅ Mermaid Dark-Theme Renderer in Concept Paper
-- ✅ react-markdown mit GFM + Mermaid Code-Block-Extraktion
-
-### Design (Cyberpunk-Institutional)
-- ✅ Deep-Slate `#090d16` Base + Amber `#f59e0b` + Electric-Blue `#3b82f6` + Emerald für Status-OK
-- ✅ Fonts: Inter (UI) + IBM Plex Serif (Body/Headlines) + JetBrains Mono (Code/Hashes)
-- ✅ SVG-Grain Overlay, Amber Glow für Critical Markers
-- ✅ Trace-beam Hover-Effects, Custom Scrollbars
-- ✅ Motion via framer-motion für Landing Reveals
-
-## Prioritized Backlog / What Comes Next
-
-### P0 (kritisch für Production)
-- [ ] Auth-Layer (nur `/api/compliance/*` und `/api/issuer/*` schützen; z.B. Emergent Google Auth)
-- [ ] Rate-Limiting auf `/api/compliance/gdpr/erasure` und `/api/issuer/credential`
-- [ ] Sprint 6 (JMAP + Wallet-Auth) on-prem Stalwart-Deployment testen (aktuell nur Config dokumentiert)
-
-### P1 (nach 1st Finish, wenn User bestätigt)
-- [ ] Sprint 7: Restliche 7 Country-Adapter (PT/SE/NO/DK/IE/BR/US) mit realer Signature-Verification
-- [ ] Sprint 8: `loa.downgrade`-Detection Live-Panel + Human-Overwrite-Endpoint (AI Act Art. 14)
-- [ ] Sprint 9: OpenAPI-Docs vollständig + Postman Collection Export + GitHub Live-Sync für Repo-Registry
-- [ ] Volltextsuche im Concept Paper: Highlighting der Query in den Resultaten
-- [ ] QR-Code Rendering für Credential Offer (URI-Scheme `openid-credential-offer://`)
-- [ ] W3C VC-DM 2.0 mit URDNA2015 Canonicalization für Swiyu (aktuell strukturelle JSON-Prüfung)
-
-### P2 (nice-to-have)
-- [ ] Frontend E2E-Tests via Playwright
-- [ ] CI/CD Workflow `eudi_compliance_gates.yml` in GitHub Actions
-- [ ] Postman Collection Export als `.json`
+### P2
+- [ ] Playwright E2E test suite (frontend)
+- [ ] GitHub Actions CI/CD `.github/workflows/eudi_compliance_gates.yml`
 - [ ] Kubernetes Helm-Chart
+- [ ] Frontend admin: user role management (promote/demote via UI)
 
 ## Test Reports
-- `/app/test_reports/iteration_1.json` — 34/34 backend tests passing after 1 bug fix (mdoc engagement)
+- `/app/test_reports/iteration_1.json` — Sprint 1-5 MVP (34/34)
+- `/app/test_reports/iteration_2.json` — Sprint 7-9 + Auth (49/49)
 
-## Architecture Locks (nicht verhandeln)
-- ES256 primär; ES384/ES512 für LoA-High; EdDSA nur für W3C VC-DM 2.0
-- CBOR Tag 18 (COSE_Sign1) + 24 (bstr.cbor) + 0 (tdate)
-- `.env` `MASTER_KEY` 32-byte base64 — Fail-Fast bei Fehlen
-- Persistente 3-Level CA (Root → Intermediate → Signer)
-- c_nonce TTL 300s + `find_one_and_delete` One-Time-Use
-- Status-List mit Signature + LRU 5min
+## Env Vars (`/app/backend/.env`)
+- `MONGO_URL` — MongoDB connection
+- `DB_NAME` — Mongo database name
+- `MASTER_KEY` — 32-byte base64 AES-256 key (fail-fast if missing)
+- `ISSUER_URL` — public backend URL (used as `aud` in proof JWTs)
+- `ISSUER_ID` — DID / issuer identifier
+- `CORS_ORIGINS` — comma-separated (default `*` — production should whitelist)
+- `ADMIN_EMAILS` — comma-separated emails to promote to admin on login (empty → first-user bootstrap)
+- `STALWART_BASE_URL` — reference-only, on-prem Stalwart JMAP sidecar
