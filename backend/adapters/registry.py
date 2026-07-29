@@ -1,31 +1,22 @@
-"""Country adapter registry — 11 countries with 4 real + 7 stub implementations."""
+"""Country adapter registry — 11 fully implemented adapters (Sprint 7)."""
 from __future__ import annotations
 
-from adapters.base import CountryAdapter, CountryConfig, sha256_hex
+from adapters.base import CountryAdapter, CountryConfig
 from adapters.eu_arf import EUARFAdapter
 from adapters.france_connect import FranceConnectAdapter
 from adapters.spid_cie import SpidCieAdapter
 from adapters.swiyu import SwiyuAdapter
+from adapters.real_impls import (
+    AamvaMdlAdapter,
+    BankIdSEAdapter,
+    GovBrAdapter,
+    IdPortenNOAdapter,
+    MitIdDKAdapter,
+    MyGovIdIEAdapter,
+    PortugalAdapter,
+)
 
-
-class _StubAdapter:
-    """Concrete Country config but returns a structured `not implemented` reply."""
-
-    def __init__(self, config: CountryConfig) -> None:
-        self.config = config
-
-    async def verify(self, presentation, *, format, audience, nonce):
-        return {
-            "valid": False,
-            "reasons": [f"adapter {self.config.code} not yet wired — protocol interface only"],
-            "disclosed_claims": {},
-        }
-
-    def hash_national_id(self, national_id: str) -> str:
-        return sha256_hex(national_id.strip())
-
-
-STUB_COUNTRIES: list[CountryConfig] = [
+CONFIGS: list[CountryConfig] = [
     CountryConfig(
         code="PT",
         name="Portugal (Autenticação.gov)",
@@ -36,6 +27,7 @@ STUB_COUNTRIES: list[CountryConfig] = [
         loa_mapping={"AL1": "low", "AL2": "substantial", "AL3": "high"},
         reference_url="https://www.autenticacao.gov.pt/",
         id_hash_algorithm="SHA-256 over NIC",
+        implemented=True,
     ),
     CountryConfig(
         code="SE",
@@ -46,7 +38,8 @@ STUB_COUNTRIES: list[CountryConfig] = [
         supported_formats=["sd-jwt"],
         loa_mapping={"basic": "substantial", "advanced": "high"},
         reference_url="https://www.bankid.com/",
-        id_hash_algorithm="SHA-256 over Personnummer",
+        id_hash_algorithm="SHA-256 over Personnummer (digits only)",
+        implemented=True,
     ),
     CountryConfig(
         code="NO",
@@ -57,7 +50,8 @@ STUB_COUNTRIES: list[CountryConfig] = [
         supported_formats=["sd-jwt"],
         loa_mapping={"idporten-loa-substantial": "substantial", "idporten-loa-high": "high"},
         reference_url="https://docs.digdir.no/",
-        id_hash_algorithm="SHA-256 over Fødselsnummer",
+        id_hash_algorithm="SHA-256 over Fødselsnummer (digits only)",
+        implemented=True,
     ),
     CountryConfig(
         code="DK",
@@ -68,7 +62,8 @@ STUB_COUNTRIES: list[CountryConfig] = [
         supported_formats=["sd-jwt"],
         loa_mapping={"low": "low", "substantial": "substantial", "high": "high"},
         reference_url="https://www.mitid.dk/",
-        id_hash_algorithm="SHA-256 over CPR",
+        id_hash_algorithm="SHA-256 over CPR (digits only)",
+        implemented=True,
     ),
     CountryConfig(
         code="IE",
@@ -80,6 +75,7 @@ STUB_COUNTRIES: list[CountryConfig] = [
         loa_mapping={"basic": "low", "verified": "substantial", "assured": "high"},
         reference_url="https://www.mygovid.ie/",
         id_hash_algorithm="SHA-256 over PPSN",
+        implemented=True,
     ),
     CountryConfig(
         code="BR",
@@ -90,18 +86,20 @@ STUB_COUNTRIES: list[CountryConfig] = [
         supported_formats=["sd-jwt", "mdoc"],
         loa_mapping={"bronze": "low", "prata": "substantial", "ouro": "high"},
         reference_url="https://acesso.gov.br/",
-        id_hash_algorithm="SHA-256 over CPF",
+        id_hash_algorithm="SHA-256 over CPF (digits only)",
+        implemented=True,
     ),
     CountryConfig(
         code="US",
-        name="United States (mDL)",
+        name="United States (AAMVA mDL)",
         flag="🇺🇸",
         scheme="AAMVA mDL",
         trust_framework="ISO 18013-5 / AAMVA",
         supported_formats=["mdoc"],
         loa_mapping={"low": "low", "moderate": "substantial", "high": "high"},
         reference_url="https://www.aamva.org/",
-        id_hash_algorithm="SHA-256 over DL Number",
+        id_hash_algorithm="SHA-256 over DL number (upper)",
+        implemented=True,
     ),
 ]
 
@@ -113,8 +111,17 @@ def build_registry() -> dict[str, CountryAdapter]:
         "IT": SpidCieAdapter(),
         "CH": SwiyuAdapter(),
     }
-    for cfg in STUB_COUNTRIES:
-        reg[cfg.code] = _StubAdapter(cfg)
+    ctor_map = {
+        "PT": PortugalAdapter,
+        "SE": BankIdSEAdapter,
+        "NO": IdPortenNOAdapter,
+        "DK": MitIdDKAdapter,
+        "IE": MyGovIdIEAdapter,
+        "BR": GovBrAdapter,
+        "US": AamvaMdlAdapter,
+    }
+    for cfg in CONFIGS:
+        reg[cfg.code] = ctor_map[cfg.code](cfg)
     return reg
 
 

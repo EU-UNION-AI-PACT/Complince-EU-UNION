@@ -131,7 +131,7 @@ class TestIssuer:
         assert d1["c_nonce_expires_in"] == 300
         assert d1["c_nonce"] != d2["c_nonce"]
 
-    def test_credential_unknown_nonce_rejected(self, s):
+    def test_credential_unknown_nonce_rejected(self, s, seeded_session):
         sk, jwk = _make_es256_key()
         proof = _sign_proof_jwt(sk, jwk, nonce="bogus-nonce-not-in-db", aud=ISSUER_URL)
         payload = {
@@ -142,13 +142,15 @@ class TestIssuer:
             "proof_jwt": proof,
             "country_code": "EU",
         }
-        r = s.post(f"{API}/issuer/credential", json=payload, timeout=20)
+        r = s.post(f"{API}/issuer/credential", json=payload, timeout=20,
+                   headers={"Authorization": f"Bearer {seeded_session['token']}"})
         assert r.status_code == 400
         detail = r.json().get("detail", {})
         reasons = detail.get("reasons") if isinstance(detail, dict) else []
         assert any("nonce" in str(x).lower() for x in reasons or []), f"expected nonce reason: {r.text}"
 
-    def test_e2e_issue_and_verify(self, s):
+    def test_e2e_issue_and_verify(self, s, seeded_session):
+        auth_h = {"Authorization": f"Bearer {seeded_session['token']}"}
         # 1) nonce
         n = s.post(f"{API}/issuer/nonce", json={}, timeout=15).json()["c_nonce"]
 
@@ -169,7 +171,7 @@ class TestIssuer:
             "proof_jwt": proof,
             "country_code": "EU",
         }
-        r = s.post(f"{API}/issuer/credential", json=req, timeout=25)
+        r = s.post(f"{API}/issuer/credential", json=req, timeout=25, headers=auth_h)
         assert r.status_code == 200, f"issue failed: {r.status_code} {r.text}"
         cred = r.json()
         assert cred["disclosures_count"] >= 4
@@ -190,7 +192,8 @@ class TestIssuer:
         # stash for downstream
         pytest.issued_credential = pres
 
-    def test_nonce_one_time_use(self, s):
+    def test_nonce_one_time_use(self, s, seeded_session):
+        auth_h = {"Authorization": f"Bearer {seeded_session['token']}"}
         # Get a nonce, use it once, try again with same nonce
         n = s.post(f"{API}/issuer/nonce", json={}).json()["c_nonce"]
         sk, jwk = _make_es256_key()
@@ -204,11 +207,11 @@ class TestIssuer:
             "proof_jwt": proof,
             "country_code": "EU",
         }
-        r1 = s.post(f"{API}/issuer/credential", json=req, timeout=20)
+        r1 = s.post(f"{API}/issuer/credential", json=req, timeout=20, headers=auth_h)
         assert r1.status_code == 200
 
         # Reuse same nonce+proof
-        r2 = s.post(f"{API}/issuer/credential", json=req, timeout=20)
+        r2 = s.post(f"{API}/issuer/credential", json=req, timeout=20, headers=auth_h)
         assert r2.status_code == 400
         detail = r2.json().get("detail", {})
         reasons = detail.get("reasons", []) if isinstance(detail, dict) else []
@@ -403,9 +406,10 @@ class TestCompliance:
         assert len(r.content) > 500
         assert r.content[:4] == b"%PDF"
 
-    def test_gdpr_erasure_missing_subject(self, s):
+    def test_gdpr_erasure_missing_subject(self, s, seeded_session):
         r = s.post(f"{API}/compliance/gdpr/erasure",
                    json={"subject_hash": "TEST_ghost_hash_zzz", "reason": "GDPR Art. 17"},
+                   headers={"Authorization": f"Bearer {seeded_session['token']}"},
                    timeout=15)
         assert r.status_code == 200
         d = r.json()
@@ -422,10 +426,8 @@ class TestCountry:
         cs = r.json()
         assert len(cs) == 11, f"expected 11 countries, got {len(cs)}"
         by_code = {c["code"]: c for c in cs}
-        for code in ("EU", "FR", "IT", "CH"):
-            assert by_code[code]["implemented"] is True, f"{code} should be implemented"
-        for code in ("PT", "SE", "NO", "DK", "IE", "BR", "US"):
-            assert by_code[code]["implemented"] is False, f"{code} should be stub"
+        for code in ("EU", "FR", "IT", "CH", "PT", "SE", "NO", "DK", "IE", "BR", "US"):
+            assert by_code[code]["implemented"] is True, f"{code} should be implemented (Sprint 7)"
 
     def test_get_country_eu(self, s):
         r = s.get(f"{API}/country/EU", timeout=15)
@@ -437,13 +439,19 @@ class TestCountry:
         assert r.status_code == 404
 
     def test_verify_stub_country_pt(self, s):
+        # Sprint 7: PT is now real. A malformed sd-jwt should fail with a REAL
+        # crypto reason (not the old 'not yet wired' stub message).
         r = s.post(f"{API}/country/verify",
                    json={"country_code": "PT", "presentation": "abc~", "format": "sd-jwt"},
                    timeout=15)
         assert r.status_code == 200
         d = r.json()
         assert d["valid"] is False
-        assert any("not yet wired" in x for x in d["reasons"])
+        reasons_blob = " ".join(d["reasons"]).lower()
+        assert "not yet wired" not in reasons_blob, f"PT still stubbed: {d}"
+        # accept any reasonable crypto/parse failure keyword
+        assert any(kw in reasons_blob for kw in ("sd-jwt", "signature", "malformed", "parse", "issuer", "jwt", "decode")), \
+            f"Expected real crypto reason, got: {d}"
 
     def test_verify_unknown_country(self, s):
         r = s.post(f"{API}/country/verify",
@@ -451,7 +459,7 @@ class TestCountry:
                    timeout=15)
         assert r.status_code == 404
 
-    def test_verify_eu_with_valid_credential(self, s):
+    def test_verify_eu_with_valid_credential(self, s, seeded_session):
         # Issue a fresh credential then verify via EU adapter
         n = s.post(f"{API}/issuer/nonce", json={}).json()["c_nonce"]
         sk, jwk = _make_es256_key()
@@ -464,7 +472,8 @@ class TestCountry:
             "proof_jwt": proof,
             "country_code": "EU",
         }
-        cred = s.post(f"{API}/issuer/credential", json=req, timeout=20).json()["credential"]
+        cred = s.post(f"{API}/issuer/credential", json=req, timeout=20,
+                      headers={"Authorization": f"Bearer {seeded_session['token']}"}).json()["credential"]
 
         r = s.post(f"{API}/country/verify",
                    json={"country_code": "EU", "presentation": cred, "format": "sd-jwt"},
@@ -516,3 +525,247 @@ class TestWellKnown:
         j2 = s.get(f"{API}/.well-known/jwks.json").json()["keys"][0]
         assert j1.get("x") == j2.get("x")
         assert j1.get("y") == j2.get("y")
+
+# ---------------------------------------------------------------------------
+# Sprint 7 — country adapter format constraints
+# ---------------------------------------------------------------------------
+class TestCountrySprint7:
+    def test_us_rejects_sd_jwt(self, s):
+        r = s.post(f"{API}/country/verify",
+                   json={"country_code": "US", "presentation": "abc~", "format": "sd-jwt"},
+                   timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["valid"] is False
+        assert any("AAMVA mDL requires ISO 18013-5 mdoc" in x for x in d["reasons"]), d
+
+    def test_br_accepts_sd_jwt(self, s):
+        r = s.post(f"{API}/country/verify",
+                   json={"country_code": "BR", "presentation": "malformed~", "format": "sd-jwt"},
+                   timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        # invalid content but the adapter accepted the format (no format-rejection reason)
+        blob = " ".join(d["reasons"]).lower()
+        assert "cannot verify format" not in blob, d
+
+    def test_br_accepts_mdoc(self, s):
+        r = s.post(f"{API}/country/verify",
+                   json={"country_code": "BR", "presentation": "deadbeef", "format": "mdoc"},
+                   timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        blob = " ".join(d["reasons"]).lower()
+        assert "cannot verify format" not in blob, d
+
+
+# ---------------------------------------------------------------------------
+# Sprint 9 — hub_extras (repos/live + postman-collection)
+# ---------------------------------------------------------------------------
+class TestHubExtras:
+    def test_repos_live(self, s):
+        r = s.get(f"{API}/hub/repos/live", timeout=30)
+        assert r.status_code == 200, r.text
+        repos = r.json()
+        assert isinstance(repos, list) and len(repos) >= 10
+        for rp in repos:
+            assert "github" in rp, f"missing github dict: {rp}"
+            g = rp["github"]
+            # every entry must have a reachable flag; reachable:false is acceptable
+            assert "reachable" in g
+            if g.get("reachable"):
+                for f in ("stars", "forks", "last_commit"):
+                    assert f in g, f"missing {f} in {g}"
+
+    def test_postman_collection(self, s):
+        r = s.get(f"{API}/hub/postman-collection", timeout=20)
+        assert r.status_code == 200, r.text
+        coll = r.json()
+        assert coll["info"]["name"]
+        assert "postman.com" in coll["info"]["schema"]
+        assert isinstance(coll["item"], list) and len(coll["item"]) >= 3
+        # each group has items
+        total = sum(len(g.get("item", [])) for g in coll["item"])
+        assert total >= 10, f"postman item count too low: {total}"
+
+
+# ---------------------------------------------------------------------------
+# Auth (Emergent Google Auth) — seeded session via mongosh
+# ---------------------------------------------------------------------------
+import subprocess
+
+
+@pytest.fixture(scope="module")
+def seeded_session():
+    """Seed a user + session_token directly via mongosh (bypasses OAuth)."""
+    token = f"test_session_{int(time.time()*1000)}"
+    uid = f"test-user-{int(time.time()*1000)}"
+    script = f"""
+    use('eudi_nexus');
+    db.users.insertOne({{user_id:'{uid}', email:'t.{uid}@e2e.local', name:'Tester', picture:'', created_at: new Date()}});
+    db.user_sessions.insertOne({{user_id:'{uid}', session_token:'{token}', expires_at: new Date(Date.now()+7*24*3600*1000), created_at: new Date()}});
+    """
+    subprocess.run(["mongosh", "--quiet", "--eval", script], check=True, capture_output=True)
+    yield {"token": token, "user_id": uid, "email": f"t.{uid}@e2e.local"}
+    # cleanup
+    cleanup = f"""
+    use('eudi_nexus');
+    db.user_sessions.deleteOne({{session_token:'{token}'}});
+    db.users.deleteOne({{user_id:'{uid}'}});
+    """
+    subprocess.run(["mongosh", "--quiet", "--eval", cleanup], capture_output=True)
+
+
+class TestAuth:
+    def test_issuer_credential_requires_auth(self, s):
+        r = s.post(f"{API}/issuer/credential", json={}, timeout=15)
+        assert r.status_code == 401, r.text
+
+    def test_gdpr_erasure_requires_auth(self, s):
+        r = s.post(f"{API}/compliance/gdpr/erasure",
+                   json={"subject_hash": "x", "reason": "y"}, timeout=15)
+        assert r.status_code == 401, r.text
+
+    def test_me_unauth(self, s):
+        r = s.get(f"{API}/auth/me", timeout=15)
+        assert r.status_code == 401
+
+    def test_me_with_bearer(self, s, seeded_session):
+        r = requests.get(f"{API}/auth/me",
+                         headers={"Authorization": f"Bearer {seeded_session['token']}"},
+                         timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["user_id"] == seeded_session["user_id"]
+        assert d["email"] == seeded_session["email"]
+
+    def test_issue_credential_with_bearer(self, s, seeded_session):
+        headers = {"Authorization": f"Bearer {seeded_session['token']}",
+                   "Content-Type": "application/json"}
+        # fresh nonce
+        n = requests.post(f"{API}/issuer/nonce", json={}, headers=headers, timeout=15).json()["c_nonce"]
+        sk, jwk = _make_es256_key()
+        proof = _sign_proof_jwt(sk, jwk, nonce=n, aud=ISSUER_URL)
+        req = {
+            "vct": "eu.europa.ec.eudi.pid.1",
+            "subject_claims": {"family_name": "Doe", "given_name": "John",
+                               "birth_date": "1990-01-01", "email": "d@e.eu"},
+            "holder_jwk": jwk,
+            "proof_jwt": proof,
+            "country_code": "EU",
+        }
+        r = requests.post(f"{API}/issuer/credential", json=req, headers=headers, timeout=25)
+        assert r.status_code == 200, r.text
+        assert r.json()["credential"].count("~") >= 4
+
+    def test_logout_deletes_session(self, s):
+        # create a fresh throwaway session so we don't break other tests
+        token = f"test_session_logout_{int(time.time()*1000)}"
+        uid = f"test-user-lo-{int(time.time()*1000)}"
+        script = f"""
+        use('eudi_nexus');
+        db.users.insertOne({{user_id:'{uid}', email:'t.{uid}@e2e.local', name:'X', picture:'', created_at: new Date()}});
+        db.user_sessions.insertOne({{user_id:'{uid}', session_token:'{token}', expires_at: new Date(Date.now()+7*24*3600*1000), created_at: new Date()}});
+        """
+        subprocess.run(["mongosh", "--quiet", "--eval", script], check=True, capture_output=True)
+        # sanity
+        r0 = requests.get(f"{API}/auth/me", headers={"Authorization": f"Bearer {token}"}, timeout=15)
+        assert r0.status_code == 200
+
+        # logout via cookie (endpoint reads cookie only)
+        r1 = requests.post(f"{API}/auth/logout",
+                           cookies={"session_token": token}, timeout=15)
+        assert r1.status_code == 200
+        # session removed → subsequent /me returns 401
+        r2 = requests.get(f"{API}/auth/me", headers={"Authorization": f"Bearer {token}"}, timeout=15)
+        assert r2.status_code == 401, r2.text
+        # cleanup user
+        subprocess.run(["mongosh", "--quiet", "--eval",
+                        f"use('eudi_nexus'); db.users.deleteOne({{user_id:'{uid}'}});"], capture_output=True)
+
+
+# ---------------------------------------------------------------------------
+# Sprint 8 — LoA downgrade + human oversight
+# ---------------------------------------------------------------------------
+def _issue_and_verify(s, seeded_session, vct: str, subject: dict):
+    """Helper: issue a credential (auth-gated) then verify it publicly."""
+    headers = {"Authorization": f"Bearer {seeded_session['token']}",
+               "Content-Type": "application/json"}
+    n = requests.post(f"{API}/issuer/nonce", json={}, headers=headers, timeout=15).json()["c_nonce"]
+    sk, jwk = _make_es256_key()
+    proof = _sign_proof_jwt(sk, jwk, nonce=n, aud=ISSUER_URL)
+    req = {
+        "vct": vct,
+        "subject_claims": subject,
+        "holder_jwk": jwk,
+        "proof_jwt": proof,
+        "country_code": "EU",
+    }
+    r = requests.post(f"{API}/issuer/credential", json=req, headers=headers, timeout=25)
+    assert r.status_code == 200, r.text
+    pres = r.json()["credential"]
+    vr = s.post(f"{API}/verifier/verify", json={"presentation": pres}, timeout=20)
+    assert vr.status_code == 200, vr.text
+    assert vr.json()["valid"] is True, vr.json()
+    return vr.json()
+
+
+class TestOversight:
+    def test_downgrades_endpoint(self, s):
+        r = s.get(f"{API}/compliance/oversight/downgrades", timeout=15)
+        assert r.status_code == 200
+        assert isinstance(r.json(), list)
+
+    def test_downgrade_detected_high_to_substantial(self, s, seeded_session):
+        subj = {
+            "family_name": f"DowngradeTest{int(time.time())}",
+            "given_name": "Alice",
+            "birth_date": "1988-08-08",
+            "email": "a@d.eu",
+        }
+        # 1) high LoA presentation
+        _issue_and_verify(s, seeded_session, "eu.europa.ec.eudi.pid.1", subj)
+        # 2) substantial LoA presentation (email vct) - same subject fingerprint
+        _issue_and_verify(s, seeded_session, "eu.europa.ec.eudi.email.1", subj)
+
+        # compute expected fp
+        import hashlib
+        fp = hashlib.sha256(
+            f"{subj['family_name']}|{subj['given_name']}|{subj['birth_date']}".lower().encode()
+        ).hexdigest()
+
+        # find the record
+        r = s.get(f"{API}/compliance/oversight/downgrades", params={"limit": 100}, timeout=15)
+        assert r.status_code == 200
+        recs = r.json()
+        mine = [x for x in recs if x.get("subject_fp") == fp]
+        assert mine, f"no downgrade record for fp={fp} in {len(recs)} records"
+        rec = mine[0]
+        assert rec["from_loa"] == "high"
+        assert rec["to_loa"] == "substantial"
+        assert rec["status"] == "pending"
+        pytest.downgrade_fp = fp  # stash
+
+    def test_override_accept(self, s, seeded_session):
+        fp = getattr(pytest, "downgrade_fp", None)
+        if not fp:
+            pytest.skip("prior downgrade test didn't produce a fingerprint")
+        r = s.post(f"{API}/compliance/oversight/override",
+                   json={"subject_fp": fp, "decision": "accept",
+                         "reviewer": "reviewer@e2e.local", "note": "ok"},
+                   timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["ok"] is True
+        assert d["record"]["status"] == "accepted"
+
+    def test_override_unknown_fp(self, s):
+        r = s.post(f"{API}/compliance/oversight/override",
+                   json={"subject_fp": "no-such-fp-zzz", "decision": "reject",
+                         "reviewer": "r@e.local", "note": "n"},
+                   timeout=15)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["ok"] is False
+        assert "no pending record" in d["reason"].lower()
+

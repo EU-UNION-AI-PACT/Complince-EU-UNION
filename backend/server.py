@@ -20,12 +20,15 @@ load_dotenv(ROOT_DIR / ".env")
 # imports AFTER load_dotenv so MASTER_KEY is available
 from database import bootstrap_indexes, close_client, get_db  # noqa: E402
 from routers import (  # noqa: E402
+    auth,
     compliance,
     country,
     hub,
+    hub_extras,
     issuer,
     jmap,
     mdoc,
+    oversight,
     paper,
     trust,
     verifier,
@@ -73,10 +76,13 @@ api_router.include_router(issuer.router)
 api_router.include_router(verifier.router)
 api_router.include_router(trust.router)
 api_router.include_router(compliance.router)
+api_router.include_router(oversight.router)
 api_router.include_router(mdoc.router)
 api_router.include_router(jmap.router)
 api_router.include_router(country.router)
 api_router.include_router(hub.router)
+api_router.include_router(hub_extras.router)
+api_router.include_router(auth.router)
 api_router.include_router(well_known.router, prefix="/.well-known")
 
 
@@ -118,7 +124,8 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origin_regex=".*",
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Set-Cookie"],
 )

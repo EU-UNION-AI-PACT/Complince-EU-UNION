@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from database import get_db
 from models import (
@@ -12,6 +12,7 @@ from models import (
     CredentialResponse,
     NonceResponse,
 )
+from routers.auth import require_user
 from services.audit_log import append_event
 from services.proof_jwt_validator import ProofJWTValidator
 from services.sd_jwt_builder import SDJWTBuilder
@@ -45,7 +46,10 @@ async def issue_nonce() -> NonceResponse:
 
 
 @router.post("/credential", response_model=CredentialResponse)
-async def issue_credential(req: CredentialOfferRequest) -> CredentialResponse:
+async def issue_credential(
+    req: CredentialOfferRequest,
+    user: dict = Depends(require_user),
+) -> CredentialResponse:
     # Proof of Possession — the wallet's holder-binding JWT
     if req.proof_jwt:
         validator = ProofJWTValidator(expected_audience=_issuer_url())
@@ -84,7 +88,7 @@ async def issue_credential(req: CredentialOfferRequest) -> CredentialResponse:
 
     await append_event(
         event_type="credential.issued",
-        actor="issuer",
+        actor=user.get("email", "issuer"),
         subject=req.subject_claims.get("family_name"),
         payload={"vct": req.vct, "country": req.country_code, "status_idx": status_idx},
     )

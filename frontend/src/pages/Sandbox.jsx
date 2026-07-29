@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Loader2, CheckCircle2, XCircle, Copy, Ticket, KeySquare, ShieldCheck, ChevronRight } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, Copy, Ticket, KeySquare, ShieldCheck, ChevronRight, Lock } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchNonce,
@@ -16,6 +16,7 @@ import {
   listCountries,
 } from "../lib/api";
 import { generateHolderKey, signProofJwt } from "../lib/crypto";
+import { useAuth } from "../lib/auth";
 
 function CopyButton({ text, testId }) {
   return (
@@ -50,7 +51,8 @@ function StatusPill({ ok, testId }) {
 }
 
 function SdJwtFlow() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { user, loginWithGoogle } = useAuth();
   const [busy, setBusy] = useState(false);
   const [nonce, setNonce] = useState(null);
   const [holder, setHolder] = useState(null);
@@ -83,6 +85,10 @@ function SdJwtFlow() {
       toast.error("Fetch nonce first");
       return;
     }
+    if (!user) {
+      toast.error(i18n.language === "de" ? "Bitte einloggen zum Ausstellen" : "Sign in required to issue credentials");
+      return;
+    }
     setBusy(true);
     try {
       const key = await generateHolderKey();
@@ -103,7 +109,11 @@ function SdJwtFlow() {
       setNonce(null);
       toast.success("Credential issued");
     } catch (e) {
-      toast.error("Issue failed: " + (e?.response?.data?.detail?.error || e.message));
+      if (e?.response?.status === 401) {
+        toast.error(i18n.language === "de" ? "Session abgelaufen — bitte erneut einloggen" : "Session expired — sign in again");
+      } else {
+        toast.error("Issue failed: " + (e?.response?.data?.detail?.error || e.message));
+      }
     } finally {
       setBusy(false);
     }
@@ -207,13 +217,25 @@ function SdJwtFlow() {
             </div>
             <button
               onClick={step2}
-              disabled={busy || !nonce}
+              disabled={busy || !nonce || !user}
               data-testid="sandbox-issue-btn"
               className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-black px-4 py-2.5 rounded-sm text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {busy ? <Loader2 size={14} className="animate-spin" /> : null}
+              {busy ? <Loader2 size={14} className="animate-spin" /> : !user ? <Lock size={13} /> : null}
               {t("sandbox.issue")}
             </button>
+            {!user && (
+              <button
+                onClick={loginWithGoogle}
+                data-testid="sandbox-sign-in-hint"
+                className="w-full flex items-center justify-center gap-2 border border-amber-500/40 text-amber-400/90 hover:text-amber-400 rounded-sm py-2 text-[11px] font-mono uppercase tracking-wider transition-colors"
+              >
+                <Lock size={11} strokeWidth={1.7} />
+                {i18n.language === "de"
+                  ? "Sign-in erforderlich — Emergent Google Auth"
+                  : "Sign in required — Emergent Google Auth"}
+              </button>
+            )}
           </div>
         </div>
 

@@ -4,11 +4,12 @@ from __future__ import annotations
 import io
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from database import get_db
 from models import ComplianceMetrics, ErasureRequest
+from routers.auth import require_user
 from services.audit_log import append_event, verify_chain
 
 router = APIRouter(prefix="/compliance", tags=["Compliance"])
@@ -50,12 +51,12 @@ async def verify_audit_chain() -> dict:
 
 
 @router.post("/gdpr/erasure")
-async def gdpr_erasure(req: ErasureRequest) -> dict:
+async def gdpr_erasure(req: ErasureRequest, user: dict = Depends(require_user)) -> dict:
     # Right to be forgotten — hash-based (never store cleartext PII)
     result = await get_db().issued_credentials.delete_many({"subject_hash": req.subject_hash})
     await append_event(
         event_type="gdpr.erasure",
-        actor="dpo",
+        actor=user.get("email", "dpo"),
         subject=req.subject_hash,
         payload={"reason": req.reason, "records_deleted": result.deleted_count},
     )

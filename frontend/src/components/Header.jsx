@@ -1,7 +1,19 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Languages, Shield, FileText, FlaskConical, Gauge, GitBranch, Globe, Github } from "lucide-react";
+import {
+  Languages,
+  Shield,
+  FileText,
+  FlaskConical,
+  Gauge,
+  GitBranch,
+  Globe,
+  Github,
+  LogIn,
+  LogOut,
+} from "lucide-react";
+import { useAuth } from "../lib/auth";
 
 const items = [
   { to: "/", labelKey: "landing", icon: Shield, testId: "nav-landing" },
@@ -15,6 +27,7 @@ const items = [
 
 export function Header() {
   const { t, i18n } = useTranslation();
+  const { user, loading, loginWithGoogle, logout } = useAuth();
   const toggleLang = () => {
     const next = i18n.language === "de" ? "en" : "de";
     i18n.changeLanguage(next);
@@ -58,14 +71,51 @@ export function Header() {
             </NavLink>
           ))}
         </nav>
-        <button
-          onClick={toggleLang}
-          data-testid="lang-toggle"
-          className="flex items-center gap-2 px-3 py-2 rounded-sm border border-white/10 text-slate-300 hover:text-white hover:border-amber-500/50 transition-colors text-xs font-mono uppercase tracking-wider"
-        >
-          <Languages size={14} strokeWidth={1.6} />
-          {i18n.language === "de" ? "DE" : "EN"}
-        </button>
+        <div className="flex items-center gap-2">
+          {!loading && user ? (
+            <div className="flex items-center gap-2" data-testid="auth-user-block">
+              {user.picture ? (
+                <img
+                  src={user.picture}
+                  alt=""
+                  className="w-7 h-7 rounded-full border border-amber-500/50"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full border border-amber-500/50 bg-amber-500/10 flex items-center justify-center text-[10px] font-mono text-amber-500">
+                  {user.name?.[0] || "?"}
+                </div>
+              )}
+              <span className="hidden md:inline text-[11px] font-mono text-slate-300 max-w-[130px] truncate" data-testid="auth-user-email">
+                {user.email}
+              </span>
+              <button
+                onClick={logout}
+                data-testid="logout-btn"
+                className="p-2 rounded-sm border border-white/10 hover:border-red-500/50 text-slate-400 hover:text-red-400 transition-colors"
+                title="Logout"
+              >
+                <LogOut size={12} strokeWidth={1.6} />
+              </button>
+            </div>
+          ) : !loading ? (
+            <button
+              onClick={loginWithGoogle}
+              data-testid="login-btn"
+              className="flex items-center gap-2 px-3 py-2 rounded-sm border border-amber-500/50 hover:bg-amber-500 hover:text-black text-amber-400 transition-colors text-xs font-mono uppercase tracking-wider"
+            >
+              <LogIn size={12} strokeWidth={1.7} />
+              Sign in
+            </button>
+          ) : null}
+          <button
+            onClick={toggleLang}
+            data-testid="lang-toggle"
+            className="flex items-center gap-2 px-3 py-2 rounded-sm border border-white/10 text-slate-300 hover:text-white hover:border-amber-500/50 transition-colors text-xs font-mono uppercase tracking-wider"
+          >
+            <Languages size={14} strokeWidth={1.6} />
+            {i18n.language === "de" ? "DE" : "EN"}
+          </button>
+        </div>
       </div>
       {/* mobile nav */}
       <nav className="lg:hidden flex items-center gap-1 overflow-x-auto px-6 pb-2 border-t border-white/5">

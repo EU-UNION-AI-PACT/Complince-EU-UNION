@@ -10,6 +10,8 @@ import {
   getAiActTransparency,
   dsaPdfUrl,
 } from "../lib/api";
+import { DowngradePanel } from "../components/DowngradePanel";
+import { useAuth } from "../lib/auth";
 
 function Stat({ label, value, tint = "amber", testId }) {
   const cls =
@@ -30,6 +32,7 @@ function Stat({ label, value, tint = "amber", testId }) {
 
 export default function Compliance() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [metrics, setMetrics] = useState(null);
   const [audit, setAudit] = useState([]);
   const [chainRes, setChainRes] = useState(null);
@@ -61,12 +64,19 @@ export default function Compliance() {
 
   const doErasure = async () => {
     if (!erasureHash) return;
+    if (!user) {
+      toast.error("Sign in required for GDPR erasure");
+      return;
+    }
     setBusy(true);
     try {
       const r = await runErasure(erasureHash);
       toast.success(`Deleted ${r.deleted} records`);
       setErasureHash("");
       refresh();
+    } catch (e) {
+      if (e?.response?.status === 401) toast.error("Authentication required");
+      else toast.error("Erasure failed");
     } finally {
       setBusy(false);
     }
@@ -236,6 +246,9 @@ export default function Compliance() {
           </a>
         </div>
       </div>
+
+      {/* AI Act Art. 14 Downgrade Panel */}
+      <DowngradePanel />
     </div>
   );
 }
