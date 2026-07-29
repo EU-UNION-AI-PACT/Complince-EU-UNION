@@ -1,34 +1,23 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* App-level style overrides. Base styling lives in index.css. */
+
+.App {
+  min-height: 100vh;
+  background: #090d16;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+/* Prose paragraph small-caps drop */
+.paper-prose > *:first-child {
+  margin-top: 0;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
-}
-
-.App-link {
-    color: #61dafb;
-}
-
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+/* JetBrains Mono for inline code inside headers */
+h1 code, h2 code, h3 code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8em;
+  background: rgba(59, 130, 246, 0.09);
+  color: #93c5fd;
+  padding: 0 0.35rem;
+  border-radius: 3px;
+  font-weight: 400;
+  border: 1px solid rgba(59, 130, 246, 0.15);
 }
